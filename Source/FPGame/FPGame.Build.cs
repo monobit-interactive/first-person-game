@@ -10,7 +10,7 @@ public class FPGame : ModuleRules
 
 		PublicDependencyModuleNames.AddRange(new[] { "Core", "CoreUObject", "Engine", "InputCore", "EnhancedInput" });
 
-		PrivateDependencyModuleNames.AddRange(new[] { "GameplayAbilities", "GameplayTasks", "GameplayTags" });
+		PrivateDependencyModuleNames.AddRange(new[] { "GameplayAbilities", "GameplayTasks", "GameplayTags", "AnimGraphRuntime" });
 
 		// Uncomment if you are using Slate UI
 		// PrivateDependencyModuleNames.AddRange(new string[] { "Slate", "SlateCore" });
