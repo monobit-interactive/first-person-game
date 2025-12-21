@@ -385,44 +385,28 @@ void AFirstPersonCharacter::GiveDoubleJump(const bool CanBe)
 
 void AFirstPersonCharacter::UpdateLastMovementDirection()
 {
-	const float DirectionAngle = UKismetAnimationLibrary::CalculateDirection(GetVelocity(), GetActorRotation());
-
-	if (DirectionAngle > -22.5 && DirectionAngle < 22.5)
-	{
-		LastMovementDirection = EMovementDirection::Forward;
-	}
-	else if (DirectionAngle > 22.5 && DirectionAngle < 67.5)
-	{
-		LastMovementDirection = EMovementDirection::ForwardRight;
-	}
-	else if (DirectionAngle > 67.5 && DirectionAngle < 112.5)
-	{
-		LastMovementDirection = EMovementDirection::Right;
-	}
-	else if (DirectionAngle > 112.5 && DirectionAngle < 157.5)
-	{
-		LastMovementDirection = EMovementDirection::BackwardRight;
-	}
-	else if (DirectionAngle > 157.5 || DirectionAngle < -157.5)
-	{
-		LastMovementDirection = EMovementDirection::Backward;
-	}
-	else if (DirectionAngle > -157.5 && DirectionAngle < -112.5)
-	{
-		LastMovementDirection = EMovementDirection::BackwardLeft;
-	}
-	else if (DirectionAngle > -112.5 && DirectionAngle < -67.5)
-	{
-		LastMovementDirection = EMovementDirection::Left;
-	}
-	else if (DirectionAngle > -67.5 && DirectionAngle < -22.5)
-	{
-		LastMovementDirection = EMovementDirection::ForwardLeft;
-	}
-	else
+	if (GetVelocity().IsNearlyZero())
 	{
 		LastMovementDirection = EMovementDirection::None;
+		return;
 	}
+
+	const float DirectionAngle = UKismetAnimationLibrary::CalculateDirection(GetVelocity(), GetActorRotation());
+
+	const int32 DirectionIndex = FMath::FloorToInt((DirectionAngle + 180.f + 22.5f) / 45.f) % 8;
+
+	static constexpr EMovementDirection Directions[] = {
+		EMovementDirection::Backward,
+		EMovementDirection::BackwardLeft,
+		EMovementDirection::Left,
+		EMovementDirection::ForwardLeft,
+		EMovementDirection::Forward,
+		EMovementDirection::ForwardRight,
+		EMovementDirection::Right,
+		EMovementDirection::BackwardRight
+	};
+
+	LastMovementDirection = Directions[DirectionIndex];
 }
 
 void AFirstPersonCharacter::UpdateLastJumpLocation()
