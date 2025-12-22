@@ -127,13 +127,6 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Character|Movement|Data|Runtime|Jump")
 	bool bCanDoubleJump;
 
-	// Crouch Data
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Character|Movement|Data|Runtime|Crouch")
-	bool bIsCrouching;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Character|Movement|Data|Runtime|Crouch")
-	bool bIsUncrouching;
-
 	// Slide Data
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Character|Movement|Data|Runtime|Slide")
 	bool bCanSlide;
@@ -145,6 +138,7 @@ protected:
 	FTimerHandle MoveTimerHandle;
 	FTimerHandle FallTimerHandle;
 	FTimerHandle SlideTimerHandle;
+	FTimerHandle CrouchTimerHandle;
 
 public:
 	AFirstPersonCharacter();
@@ -161,6 +155,7 @@ protected:
 	virtual void Landed(const FHitResult& Hit) override;
 	virtual bool CanJumpInternal_Implementation() const override;
 	virtual void OnJumped_Implementation() override { OnCharacterJumped(); }
+	virtual void UnCrouch(bool bClientSimulation = false) override;
 
 	// Input Handlers
 	void HandleInputMoveTriggered(const FInputActionValue& Value);
@@ -240,6 +235,18 @@ protected:
 
 	UFUNCTION(BlueprintImplementableEvent)
 	void OnCharacterFalling();
+
+	virtual void OnStartCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust) override
+	{
+		Super::OnStartCrouch(HalfHeightAdjust, ScaledHalfHeightAdjust);
+		OnCharacterCrouched();
+	}
+
+	virtual void OnEndCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust) override
+	{
+		Super::OnEndCrouch(HalfHeightAdjust, ScaledHalfHeightAdjust);
+		OnCharacterUncrouched();
+	}
 
 public:
 	USkeletalMeshComponent* GetFirstPersonMeshComponent() const { return FirstPersonMesh; }

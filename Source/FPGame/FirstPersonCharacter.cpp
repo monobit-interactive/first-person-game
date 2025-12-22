@@ -112,7 +112,7 @@ void AFirstPersonCharacter::Landed(const FHitResult& Hit)
 
 	GiveDoubleJump(false);
 
-	if (bIsCrouching)
+	if (GetCharacterMovement()->IsCrouching())
 	{
 		return;
 	}
@@ -133,6 +133,17 @@ bool AFirstPersonCharacter::CanJumpInternal_Implementation() const
 	}
 
 	return IsCrouched() && !GetCharacterMovement()->IsFalling();
+}
+
+void AFirstPersonCharacter::UnCrouch(bool bClientSimulation)
+{
+	if (CheckObstacleAboveHead())
+	{
+		GEngine->AddOnScreenDebugMessage(-1, 1.0f, FColor::Red, TEXT("There is an obstacle above character."));
+		return;
+	}
+
+	Super::UnCrouch(bClientSimulation);
 }
 
 void AFirstPersonCharacter::HandleInputMoveTriggered(const FInputActionValue& Value)
@@ -159,7 +170,7 @@ void AFirstPersonCharacter::HandleInputJumpTriggered(const FInputActionValue& Va
 
 void AFirstPersonCharacter::HandleInputCrouchTriggered(const FInputActionValue& Value)
 {
-	if ((bIsCrouching && bIsUncrouching) || (bIsSliding || GetCharacterMovement()->IsFalling()))
+	if ((bIsSliding || GetCharacterMovement()->IsFalling()))
 	{
 		return;
 	}
@@ -274,7 +285,20 @@ void AFirstPersonCharacter::DoJump()
 	}
 	else
 	{
-		DoUncrouch();
+		if (bIsCrouched)
+		{
+			GEngine->AddOnScreenDebugMessage(-1, 1.0f, FColor::Yellow,
+			                                 TEXT("Character is crouched, waiting uncrouching"));
+			DoUncrouch();
+
+			// if uncrouch succeed, bWantsToCrouch will set to false
+			// otherwise, it remains true.
+			if (GetCharacterMovement()->bWantsToCrouch)
+			{
+				GEngine->AddOnScreenDebugMessage(-1, 1.0f, FColor::Yellow, TEXT("Character can't uncrouching"));
+				return;
+			}
+		}
 
 		if (!bHasJumped)
 		{
@@ -292,28 +316,12 @@ void AFirstPersonCharacter::DoStopJump()
 
 void AFirstPersonCharacter::DoCrouch()
 {
-	bIsCrouching = true;
-	bIsUncrouching = false;
 	Crouch();
-	OnCharacterCrouched();
 }
 
 void AFirstPersonCharacter::DoUncrouch()
 {
-	if (!IsCrouched())
-	{
-		return;
-	}
-
-	if (CheckObstacleAboveHead())
-	{
-		return;
-	}
-
-	bIsUncrouching = true;
-	bIsCrouching = false;
 	UnCrouch();
-	OnCharacterUncrouched();
 }
 
 void AFirstPersonCharacter::DoSlide()
@@ -447,7 +455,7 @@ void AFirstPersonCharacter::OnCharacterFallTimerEvent()
 	{
 		OnCharacterFalling();
 
-		if (bIsCrouching)
+		if (GetCharacterMovement()->IsCrouching())
 		{
 			return;
 		}
