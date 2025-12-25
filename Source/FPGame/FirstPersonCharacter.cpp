@@ -369,6 +369,10 @@ void AFirstPersonCharacter::DoTraverse()
 	else
 	{
 		DoHurdle();
+		if (!CRD.bIsHurdling)
+		{
+			DoJump();
+		}
 	}
 }
 
@@ -447,6 +451,12 @@ void AFirstPersonCharacter::DoHurdle()
 	case EMovementDirection::Forward:
 	case EMovementDirection::ForwardLeft:
 	case EMovementDirection::ForwardRight:
+		{
+			if (!IsCharacterMoving())
+			{
+				return;
+			}
+		}
 		break;
 	default:
 		return;
