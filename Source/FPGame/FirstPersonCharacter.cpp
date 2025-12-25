@@ -8,6 +8,8 @@
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "KismetAnimationLibrary.h"
+#include "KismetTraceUtils.h"
+#include "TraversableObstacleComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
 
 
@@ -18,7 +20,7 @@ AFirstPersonCharacter::AFirstPersonCharacter()
 	// Create FirstPersonMesh
 	FirstPersonMesh = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("First Person Mesh"));
 	FirstPersonMesh->SetupAttachment(GetMesh());
-	FirstPersonMesh->SetRelativeLocationAndRotation(FVector(0, 0, -88.0f), FRotator(0, -90.0f, 0));
+	FirstPersonMesh->SetRelativeLocationAndRotation(CDD.DefaultMeshRelativeLocation, CDD.DefaultMeshRelativeRotation);
 	FirstPersonMesh->SetOnlyOwnerSee(true);
 	FirstPersonMesh->FirstPersonPrimitiveType = EFirstPersonPrimitiveType::FirstPerson;
 	FirstPersonMesh->SetCollisionProfileName(FName("NoCollision"));
@@ -26,7 +28,8 @@ AFirstPersonCharacter::AFirstPersonCharacter()
 	// Create FirstPersonCamera
 	FirstPersonCamera = CreateDefaultSubobject<UCameraComponent>(TEXT("First Person Camera"));
 	FirstPersonCamera->SetupAttachment(FirstPersonMesh);
-	FirstPersonCamera->SetRelativeLocationAndRotation(FVector(0.0f, 0.f, 130.f), FRotator(0, 90.0f, 0));
+	FirstPersonCamera->SetRelativeLocationAndRotation(CDD.DefaultCameraRelativeLocation,
+	                                                  CDD.DefaultCameraRelativeRotation);
 	FirstPersonCamera->bUsePawnControlRotation = true;
 	FirstPersonCamera->bEnableFirstPersonFieldOfView = true;
 	FirstPersonCamera->bEnableFirstPersonScale = true;
@@ -36,17 +39,17 @@ AFirstPersonCharacter::AFirstPersonCharacter()
 
 	GetCapsuleComponent()->SetCapsuleRadius(42);
 	GetCapsuleComponent()->SetHiddenInGame(false);
-	GetCapsuleComponent()->SetCapsuleHalfHeight(DefaultCharacterHeight);
-	GetCharacterMovement()->CrouchedHalfHeight = DefaultCharacterCrouchedHeight;
+	GetCapsuleComponent()->SetCapsuleHalfHeight(CDD.DefaultCharacterHeight);
+	GetCharacterMovement()->SetCrouchedHalfHeight(CDD.DefaultCharacterCrouchedHeight);
 
-	GetCharacterMovement()->MaxWalkSpeed = DefaultWalkSpeed;
-	GetCharacterMovement()->MaxWalkSpeedCrouched = DefaultCrouchedWalkSpeed;
-	GetCharacterMovement()->BrakingDecelerationWalking = DefaultBrakingDecelerationWalking;
-	GetCharacterMovement()->GroundFriction = DefaultGroundFriction;
+	GetCharacterMovement()->MaxWalkSpeed = CDD.DefaultWalkSpeed;
+	GetCharacterMovement()->MaxWalkSpeedCrouched = CDD.DefaultCrouchedWalkSpeed;
+	GetCharacterMovement()->BrakingDecelerationWalking = CDD.DefaultBrakingDecelerationWalking;
+	GetCharacterMovement()->GroundFriction = CDD.DefaultGroundFriction;
 	GetCharacterMovement()->bCanWalkOffLedgesWhenCrouching = true;
-	GetCharacterMovement()->JumpZVelocity = DefaultJumpVelocity;
-	GetCharacterMovement()->AirControl = DefaultAirControl;
-	GetCharacterMovement()->FallingLateralFriction = DefaultFallingLateralFriction;
+	GetCharacterMovement()->JumpZVelocity = CDD.DefaultJumpVelocity;
+	GetCharacterMovement()->AirControl = CDD.DefaultAirControl;
+	GetCharacterMovement()->FallingLateralFriction = CDD.DefaultFallingLateralFriction;
 }
 
 void AFirstPersonCharacter::BeginPlay()
@@ -96,9 +99,9 @@ void AFirstPersonCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInp
 		EnhancedInputComponent->BindAction(LookAction, ETriggerEvent::Triggered, this,
 		                                   &AFirstPersonCharacter::HandleInputLookTriggered);
 
-		// Jumping
-		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Triggered, this,
-		                                   &AFirstPersonCharacter::HandleInputJumpTriggered);
+		// Traversing
+		EnhancedInputComponent->BindAction(TraverseAction, ETriggerEvent::Triggered, this,
+		                                   &AFirstPersonCharacter::HandleInputTraverseTriggered);
 
 		// Crouching
 		EnhancedInputComponent->BindAction(CrouchAction, ETriggerEvent::Triggered, this,
@@ -112,14 +115,15 @@ void AFirstPersonCharacter::Landed(const FHitResult& Hit)
 
 	GiveDoubleJump(false);
 
-	if (GetCharacterMovement()->IsCrouching())
+	// TODO I don't remember what this line doing?
+	/*if (GetCharacterMovement()->IsCrouching())
 	{
 		return;
-	}
+	}*/
 
 	UpdateLastLandLocation();
-	bHasJumped = false;
-	bHasDoubleJumped = false;
+	CRD.bHasJumped = false;
+	CRD.bHasDoubleJumped = false;
 
 	OnCharacterLanded(Hit);
 }
@@ -163,14 +167,14 @@ void AFirstPersonCharacter::HandleInputLookTriggered(const FInputActionValue& Va
 	DoLook(LookAxis.X, LookAxis.Y);
 }
 
-void AFirstPersonCharacter::HandleInputJumpTriggered(const FInputActionValue& Value)
+void AFirstPersonCharacter::HandleInputTraverseTriggered(const FInputActionValue& Value)
 {
-	DoJump();
+	DoTraverse();
 }
 
 void AFirstPersonCharacter::HandleInputCrouchTriggered(const FInputActionValue& Value)
 {
-	if ((bIsSliding || GetCharacterMovement()->IsFalling()))
+	if ((CRD.bIsSliding || GetCharacterMovement()->IsFalling()))
 	{
 		return;
 	}
@@ -181,7 +185,7 @@ void AFirstPersonCharacter::HandleInputCrouchTriggered(const FInputActionValue& 
 	}
 	else
 	{
-		if (IsCharacterMoving(DefaultVelocityThresholdToSlide))
+		if (IsCharacterMoving(CDD.DefaultVelocityThresholdToSlide))
 		{
 			DoSlide();
 		}
@@ -222,10 +226,11 @@ bool AFirstPersonCharacter::IsCharacterMoving(const float VelocityThreshold) con
 	return GetCharacterVelocityLength() > VelocityThreshold;
 }
 
+
 bool AFirstPersonCharacter::CheckObstacleAboveHead() const
 {
 	const FVector TraceStartLocation = GetHeadLocation();
-	const FVector TraceEndLocation = TraceStartLocation + GetActorUpVector() * DefaultCharacterHeight;
+	const FVector TraceEndLocation = TraceStartLocation + GetActorUpVector() * CDD.DefaultCharacterHeight;
 
 	FCollisionQueryParams QueryParams;
 	QueryParams.AddIgnoredActor(this);
@@ -233,17 +238,87 @@ bool AFirstPersonCharacter::CheckObstacleAboveHead() const
 	FHitResult HitResult;
 	const float CapsuleTraceRadius = GetCapsuleComponent()->GetScaledCapsuleRadius();
 	const float CapsuleTraceHeight = GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
+	const FCollisionShape CapsuleCollisionShape = FCollisionShape::MakeCapsule(CapsuleTraceRadius, CapsuleTraceHeight);
+
 	const bool bHit = GetWorld()->SweepSingleByChannel(
 		HitResult,
 		TraceStartLocation,
 		TraceEndLocation,
 		FQuat::Identity,
 		ECC_Visibility,
-		FCollisionShape::MakeCapsule(CapsuleTraceRadius, CapsuleTraceHeight),
+		CapsuleCollisionShape,
 		QueryParams
 	);
 
 	return bHit;
+}
+
+bool AFirstPersonCharacter::CheckObstacleFrontFootLevel(FHitResult& HitResult) const
+{
+	FCollisionQueryParams QueryParams;
+	QueryParams.AddIgnoredActor(this);
+
+	const int BoxSize = CDD.DefaultCharacterCrouchedHeight;
+	const FVector BoxHalfExtent = FVector(BoxSize);
+	const FVector TraceStartLocation = GetFootLocation() + FVector(0, 0, BoxSize);
+	const FVector TraceEndLocation = TraceStartLocation + GetActorForwardVector() * 200;
+	const FQuat& TraceRotation = GetActorRotation().Quaternion();
+
+	const bool bHit = GetWorld()->SweepSingleByChannel(
+		HitResult,
+		TraceStartLocation,
+		TraceEndLocation,
+		TraceRotation,
+		ECC_Visibility,
+		FCollisionShape::MakeBox(BoxHalfExtent),
+		QueryParams
+	);
+
+	DrawDebugBoxTraceSingle(GetWorld(), TraceStartLocation, TraceEndLocation, BoxHalfExtent, TraceRotation.Rotator(),
+	                        EDrawDebugTrace::ForDuration, bHit, HitResult, FLinearColor::Red, FLinearColor::Green,
+	                        1.5f);
+
+	return bHit;
+}
+
+bool AFirstPersonCharacter::CheckObstacleFrontHeadLevel(FHitResult& HitResult) const
+{
+	FCollisionQueryParams QueryParams;
+	QueryParams.AddIgnoredActor(this);
+
+	const int BoxSize = CDD.DefaultCharacterCrouchedHeight;
+	const FVector BoxHalfExtent = FVector(BoxSize);
+	const FVector TraceStartLocation = GetHeadLocation() + FVector(0, 0, BoxSize);
+	const FVector TraceEndLocation = TraceStartLocation + GetActorForwardVector() * 200;
+	const FQuat& TraceRotation = GetActorRotation().Quaternion();
+
+	const bool bHit = GetWorld()->SweepSingleByChannel(
+		HitResult,
+		TraceStartLocation,
+		TraceEndLocation,
+		TraceRotation,
+		ECC_Visibility,
+		FCollisionShape::MakeBox(BoxHalfExtent),
+		QueryParams
+	);
+
+	DrawDebugBoxTraceSingle(GetWorld(), TraceStartLocation, TraceEndLocation, BoxHalfExtent, TraceRotation.Rotator(),
+	                        EDrawDebugTrace::ForDuration, bHit, HitResult, FLinearColor::Red, FLinearColor::Green,
+	                        1.5f);
+
+	return bHit;
+}
+
+void AFirstPersonCharacter::ResetCameraRelativeLocationAndRotation() const
+{
+	GetFirstPersonCameraComponent()->SetRelativeLocationAndRotation(CDD.DefaultCameraRelativeLocation,
+	                                                                CDD.DefaultCameraRelativeRotation);
+}
+
+void AFirstPersonCharacter::ResetMeshRelativeLocationAndRotation() const
+{
+	GetFirstPersonMeshComponent()->SetRelativeLocationAndRotation(CDD.DefaultMeshRelativeLocation,
+	                                                              CDD.DefaultMeshRelativeRotation);
 }
 
 void AFirstPersonCharacter::DoMove(const float Right, const float Forward)
@@ -268,6 +343,35 @@ void AFirstPersonCharacter::DoLook(const float Yaw, const float Pitch)
 	}
 }
 
+void AFirstPersonCharacter::DoTraverse()
+{
+	if (bIsCrouched)
+	{
+		GEngine->AddOnScreenDebugMessage(-1, 1.0f, FColor::Yellow,
+		                                 TEXT("Character is crouched, waiting uncrouching"));
+		DoUncrouch();
+
+		// if uncrouch succeed, bWantsToCrouch will set to false
+		// otherwise, it remains true.
+		if (GetCharacterMovement()->bWantsToCrouch)
+		{
+			GEngine->AddOnScreenDebugMessage(-1, 1.0f, FColor::Yellow, TEXT("Character can't uncrouching"));
+			return;
+		}
+	}
+
+	FHitResult HitResult;
+	const bool Hit = CheckObstacleFrontFootLevel(HitResult);
+	if (!Hit)
+	{
+		DoJump();
+	}
+	else
+	{
+		DoHurdle();
+	}
+}
+
 void AFirstPersonCharacter::DoJump()
 {
 	if (!HasJump())
@@ -279,30 +383,15 @@ void AFirstPersonCharacter::DoJump()
 	{
 		if (HasDoubleJump())
 		{
-			bHasDoubleJumped = true;
+			CRD.bHasDoubleJumped = true;
 			Jump();
 		}
 	}
 	else
 	{
-		if (bIsCrouched)
+		if (!CRD.bHasJumped)
 		{
-			GEngine->AddOnScreenDebugMessage(-1, 1.0f, FColor::Yellow,
-			                                 TEXT("Character is crouched, waiting uncrouching"));
-			DoUncrouch();
-
-			// if uncrouch succeed, bWantsToCrouch will set to false
-			// otherwise, it remains true.
-			if (GetCharacterMovement()->bWantsToCrouch)
-			{
-				GEngine->AddOnScreenDebugMessage(-1, 1.0f, FColor::Yellow, TEXT("Character can't uncrouching"));
-				return;
-			}
-		}
-
-		if (!bHasJumped)
-		{
-			bHasJumped = true;
+			CRD.bHasJumped = true;
 			GiveDoubleJump(true);
 			Jump();
 		}
@@ -326,34 +415,117 @@ void AFirstPersonCharacter::DoUncrouch()
 
 void AFirstPersonCharacter::DoSlide()
 {
-	if (bIsSliding)
+	if (CRD.bIsSliding)
 	{
 		return;
 	}
 
-	bIsSliding = true;
-	GetCharacterMovement()->BrakingDecelerationWalking = DefaultBrakingDecelerationWalkingWhileSlide;
-	GetCharacterMovement()->GroundFriction = DefaultGroundFrictionWhileSlide;
+	CRD.bIsSliding = true;
+	GetCharacterMovement()->BrakingDecelerationWalking = CDD.DefaultBrakingDecelerationWalkingWhileSlide;
+	GetCharacterMovement()->GroundFriction = CDD.DefaultGroundFrictionWhileSlide;
 
-	FVector LaunchVelocity = GetCharacterMovement()->GetLastInputVector() * DefaultLaunchValueToSlide;
+	FVector LaunchVelocity = GetCharacterMovement()->GetLastInputVector() * CDD.DefaultLaunchValueToSlide;
 	LaunchVelocity.Z = 0.0f;
 	LaunchCharacter(LaunchVelocity, false, false);
 	OnCharacterSlid();
 
-	GetWorldTimerManager().SetTimer(SlideTimerHandle, this, &AFirstPersonCharacter::DoStopSlide, DefaultSlideDuration,
+	GetWorldTimerManager().SetTimer(SlideTimerHandle, this, &AFirstPersonCharacter::DoStopSlide,
+	                                CDD.DefaultSlideDuration,
 	                                false);
 }
 
-void AFirstPersonCharacter::DoStopSlide()
+
+void AFirstPersonCharacter::DoHurdle()
 {
-	if (!bIsSliding)
+	if (CRD.bIsHurdling)
 	{
 		return;
 	}
 
-	bIsSliding = false;
-	GetCharacterMovement()->BrakingDecelerationWalking = DefaultBrakingDecelerationWalking;
-	GetCharacterMovement()->GroundFriction = DefaultGroundFriction;
+	switch (CRD.LastMovementDirection)
+	{
+	case EMovementDirection::Forward:
+	case EMovementDirection::ForwardLeft:
+	case EMovementDirection::ForwardRight:
+		break;
+	default:
+		return;
+	}
+
+	FHitResult FootHitResult;
+	if (const bool FootHit = CheckObstacleFrontFootLevel(FootHitResult))
+	{
+		FHitResult HeadHitResult;
+		if (const bool HeadHit = CheckObstacleFrontHeadLevel(HeadHitResult))
+		{
+			return;
+		}
+
+		if (!FootHitResult.GetActor()->Implements<UTraversableObstacleInterface>())
+		{
+			return;
+		}
+
+		const FVector ImpactPoint = FootHitResult.ImpactPoint;
+
+		FCollisionQueryParams QueryParams;
+		QueryParams.AddIgnoredActor(this);
+
+		const FVector TraceStartLocation = GetActorLocation();
+		const FVector TraceEndLocation = ImpactPoint + (GetActorForwardVector() * CDD.DefaultHurdleLength);
+		const FQuat& TraceRotation = GetActorRotation().Quaternion();
+		const float CapsuleRadius = GetCapsuleComponent()->GetUnscaledCapsuleRadius();
+		const float CapsuleHalfHeight = GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight();
+		const FCollisionShape TraceCollisionShape = FCollisionShape::MakeCapsule(CapsuleRadius, CapsuleHalfHeight);
+
+		const bool bHit = GetWorld()->SweepSingleByChannel(
+			FootHitResult,
+			TraceStartLocation,
+			TraceEndLocation,
+			TraceRotation,
+			ECC_Visibility,
+			TraceCollisionShape,
+			QueryParams
+		);
+
+		DrawDebugCapsuleTraceSingle(GetWorld(), TraceStartLocation, TraceEndLocation, CapsuleRadius, CapsuleHalfHeight,
+		                            EDrawDebugTrace::ForDuration, bHit, FootHitResult, FColor::Red, FColor::Blue, 1);
+
+		GetCharacterMovement()->DisableMovement();
+
+		CRD.bIsHurdling = true;
+
+		const FVector TraceEnd = FootHitResult.TraceEnd;
+		CRD.LastHurdleStartPosition = FootHitResult.TraceStart;
+		CRD.LastHurdleEndPosition = FVector(TraceEnd.X, TraceEnd.Y, GetActorLocation().Z + 10);
+		SetActorLocation(CRD.LastHurdleEndPosition, false, nullptr, ETeleportType::TeleportPhysics);
+
+		OnCharacterHurdle(CRD.LastHurdleStartPosition, CRD.LastHurdleEndPosition);
+		GetWorldTimerManager().SetTimer(HurdleTimerHandle, this, &AFirstPersonCharacter::DoStopHurdle,
+		                                CDD.DefaultHurdleDuration,
+		                                false);
+	}
+}
+
+void AFirstPersonCharacter::DoStopHurdle()
+{
+	if (CRD.bIsHurdling)
+	{
+		CRD.bIsHurdling = false;
+		GetCharacterMovement()->SetMovementMode(MOVE_Walking);
+	}
+}
+
+void AFirstPersonCharacter::DoStopSlide()
+{
+	if (!CRD.bIsSliding)
+	{
+		return;
+	}
+
+	CRD.bIsSliding = false;
+	GetCharacterMovement()->BrakingDecelerationWalking = CDD.DefaultBrakingDecelerationWalking;
+	GetCharacterMovement()->GroundFriction = CDD.DefaultGroundFriction;
 
 	if (GetWorldTimerManager().IsTimerActive(SlideTimerHandle))
 	{
@@ -368,22 +540,23 @@ void AFirstPersonCharacter::DoStopSlide()
 	OnCharacterStopSlid();
 }
 
+
 bool AFirstPersonCharacter::HasJump()
 {
-	return !bHasJumped || !bHasDoubleJumped;
+	return !CRD.bHasJumped || !CRD.bHasDoubleJumped;
 }
 
 bool AFirstPersonCharacter::HasDoubleJump()
 {
-	return HasJump() && (!bHasDoubleJumped && bCanDoubleJump);
+	return HasJump() && (!CRD.bHasDoubleJumped && CRD.bCanDoubleJump);
 }
 
 void AFirstPersonCharacter::GiveDoubleJump(const bool CanBe)
 {
-	bCanDoubleJump = CanBe;
-	if (bCanDoubleJump)
+	CRD.bCanDoubleJump = CanBe;
+	if (CRD.bCanDoubleJump)
 	{
-		JumpMaxCount = DefaultJumpMaxCount;
+		JumpMaxCount = CDD.DefaultJumpMaxCount;
 	}
 	else
 	{
@@ -395,7 +568,7 @@ void AFirstPersonCharacter::UpdateLastMovementDirection()
 {
 	if (GetVelocity().IsNearlyZero())
 	{
-		LastMovementDirection = EMovementDirection::None;
+		CRD.LastMovementDirection = EMovementDirection::None;
 		return;
 	}
 
@@ -414,22 +587,22 @@ void AFirstPersonCharacter::UpdateLastMovementDirection()
 		EMovementDirection::BackwardRight
 	};
 
-	LastMovementDirection = Directions[DirectionIndex];
+	CRD.LastMovementDirection = Directions[DirectionIndex];
 }
 
 void AFirstPersonCharacter::UpdateLastJumpLocation()
 {
-	LastJumpLocation = GetActorLocation();
+	CRD.LastJumpLocation = GetActorLocation();
 }
 
 void AFirstPersonCharacter::UpdateLastLandLocation()
 {
-	LastLandLocation = GetActorLocation();
+	CRD.LastLandLocation = GetActorLocation();
 }
 
 void AFirstPersonCharacter::UpdateLastDoubleJumpLocation()
 {
-	LastDoubleJumpLocation = GetActorLocation();
+	CRD.LastDoubleJumpLocation = GetActorLocation();
 }
 
 void AFirstPersonCharacter::OnCharacterMoveTimerEvent()
@@ -460,7 +633,7 @@ void AFirstPersonCharacter::OnCharacterFallTimerEvent()
 			return;
 		}
 
-		if (bHasJumped)
+		if (CRD.bHasJumped)
 		{
 			if (HasDoubleJump())
 			{
@@ -469,7 +642,7 @@ void AFirstPersonCharacter::OnCharacterFallTimerEvent()
 		}
 		else
 		{
-			bHasJumped = true;
+			CRD.bHasJumped = true;
 			GiveDoubleJump(true);
 		}
 	}
