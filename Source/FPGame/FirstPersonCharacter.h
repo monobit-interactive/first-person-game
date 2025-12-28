@@ -109,7 +109,7 @@ struct FCharacterDefaultData
 	float DefaultHurdleDuration = 0.1f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	float DefaultHurdleLength = 100.0f;
+	float DefaultHurdleLength = 50.0f;
 };
 
 USTRUCT(BlueprintType)
